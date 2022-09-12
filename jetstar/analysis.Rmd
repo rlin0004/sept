@@ -1,0 +1,272 @@
+---
+title: "analysis"
+author: "Ruimin Lin - 28757599"
+date: '2022-09-11'
+output: html_document
+---
+
+Key objective:
+- Understand what is driving the movements in NPS monthly results
+- Focus areas to improve NPS
+- Show key trends and findings
+
+Target Audience:
+- Head of Customer
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(stringr)
+library(lubridate)
+library(GGally)
+```
+
+```{r}
+nps <- read_csv("Dummy NPS Data for Interview wo Verbatim.csv")
+nps1 <- nps[-1, ]
+```
+
+```{r}
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("[^0-9.-]", "", .)))
+
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("1010", "10", .))) %>%
+  mutate(across(contains("Q2.1._"), ~gsub("00", "0", .)))
+
+nps1 <- nps1 %>%
+  mutate(Q1.1. = as.numeric(Q1.1.),
+         Q2.1._9 = as.numeric(Q2.1._9),
+         Q2.1._1 = as.numeric(Q2.1._1),
+         Q2.1._2 = as.numeric(Q2.1._2),
+         Q2.1._3 = as.numeric(Q2.1._3),
+         Q2.1._6 = as.numeric(Q2.1._6),
+         Q2.1._5 = as.numeric(Q2.1._5),
+         Q2.1._7 = as.numeric(Q2.1._7),
+         Q2.1._8 = as.numeric(Q2.1._8),
+         Q2.1._12 = as.numeric(Q2.1._12),
+         FARE_COST = as.numeric(FARE_COST),
+         DATE_OF_TRAVEL = dmy(DATE_OF_TRAVEL),
+         DEPARTURE_DELAY = as.numeric(DEPARTURE_DELAY))
+
+nps1 <- nps1 %>%
+  mutate(MONTH_OF_TRAVEL = month(DATE_OF_TRAVEL, label = TRUE, abbr = TRUE))
+
+glimpse(nps1)
+```
+
+
+```{r}
+# deselect variables and remove missing value from country variable
+nps1a <- nps1 %>%
+  drop_na(-c(9:17)) %>%
+  select(-Q34_Version,
+         -Q34_Resolution,
+         -`Q34_Operating System`,
+         -Q34_Browser)
+
+```
+
+# nps daily
+
+```{r}
+nps_group <- nps1a %>%
+  select(Q1.1._NPS_GROUP) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = round(((n/sum(n))*100),2))
+
+nps_group
+```
+
+```{r}
+nps_daily <- nps1a %>%
+  select(ResponseId,
+         Q1.1._NPS_GROUP,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL) %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = round((n/sum(n)*100),2)) %>%
+  ungroup()
+#  pivot_wider(
+#    names_from = Q1.1._NPS_GROUP,
+#    values_from = pct
+#  ) %>%
+#  group_by(DATE_OF_TRAVEL,
+#           MONTH_OF_TRAVEL) %>%
+#  summarise(n = sum(n))
+
+nps_promoter <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Promoter")
+
+nps_detractor <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Detractor")
+
+nps_passive <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Passive")
+
+nps_daily1 <- nps_daily %>%
+  select(DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         n) %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(n = sum(n)) %>%
+  ungroup() %>%
+  mutate(nps_score = nps_promoter$pct - nps_detractor$pct)
+
+
+
+
+npsp1 <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "Mar") %>%
+  ggplot(aes(x = DATE_OF_TRAVEL,
+             y = nps_score)) +
+  geom_line()
+
+npsp2 <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "Apr") %>%
+  ggplot(aes(x = DATE_OF_TRAVEL,
+             y = nps_score)) +
+  geom_line()
+
+npsp3 <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "May") %>%
+  ggplot(aes(x = DATE_OF_TRAVEL,
+             y = nps_score)) +
+  geom_line()
+
+
+gridExtra::grid.arrange(npsp1,
+                        npsp2,
+                        npsp3, nrow = 3)
+```
+
+# correlations
+
+```{r}
+dailyavg <- nps1a %>%
+  select(Q1.1.,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         DEPARTURE_DELAY,
+         FARE_COST)%>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(Q1.1. = mean(Q1.1.),
+            DEPARTURE_DELAY = mean(DEPARTURE_DELAY),
+            FARE_COST = mean(FARE_COST)) %>%
+  ungroup() 
+
+```
+
+
+```{r}
+csat_daily <- nps1a %>%
+  select(ResponseId,
+         c(5:13),
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL) 
+
+csat_daily <- csat_daily %>%
+  mutate(CSAT = rowMeans(select(nps1a,
+                       c(5:13)), na.rm = TRUE)) %>%
+  select(ResponseId,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         CSAT)
+
+csat_daily1 <- csat_daily %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(CSAT = mean(CSAT, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+
+```{r}
+dailyavg1 <- 
+  merge(x = dailyavg, y = csat_daily1, by = "DATE_OF_TRAVEL") %>%
+  mutate(MONTH_OF_TRAVEL = MONTH_OF_TRAVEL.x,
+         nps_score = nps_daily1$nps_score) %>%
+  select(-MONTH_OF_TRAVEL.x,
+         -MONTH_OF_TRAVEL.y) 
+  
+
+ggpairs(dailyavg1[,c(3,4,5,7)])
+```
+
+# survey satisfaction questions summary
+
+```{r}
+n_responses <- 
+  tibble(Q2.1._9 = sum(!is.na(nps1a$Q2.1._9)),
+         Q2.1._1= sum(!is.na(nps1a$Q2.1._1)),
+         Q2.1._2 = sum(!is.na(nps1a$Q2.1._2)),
+         Q2.1._3 = sum(!is.na(nps1a$Q2.1._3)),
+         Q2.1._6 = sum(!is.na(nps1a$Q2.1._6)),
+         Q2.1._5 = sum(!is.na(nps1a$Q2.1._5)),
+         Q2.1._7 = sum(!is.na(nps1a$Q2.1._7)),
+         Q2.1._8 = sum(!is.na(nps1a$Q2.1._8)),
+         Q2.1._12 = sum(!is.na(nps1a$Q2.1._12)))
+
+
+n_responses <- n_responses %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "nresponse")
+
+
+names <- nps[1,9:17]
+
+names <- names %>%
+ mutate(Q2.1._9 = str_extract(Q2.1._9, "\\ - (.*)"),
+        Q2.1._1 = str_extract(Q2.1._1, "\\ - (.*)"),
+        Q2.1._2 = str_extract(Q2.1._2, "\\ - (.*)"),
+        Q2.1._3 = str_extract(Q2.1._3, "\\ - (.*)"),
+        Q2.1._6 = str_extract(Q2.1._6, "\\ - (.*)"),
+        Q2.1._5 = str_extract(Q2.1._5, "\\ - (.*)"),
+        Q2.1._7 = str_extract(Q2.1._7, "\\ - (.*)"),
+        Q2.1._8 = str_extract(Q2.1._8, "\\ - (.*)"),
+        Q2.1._12 = str_extract(Q2.1._12, "\\ - (.*)")) %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "detail")
+
+
+names
+```
+
+```{r}
+n_responses1 <- 
+  merge(x = n_responses, y = names, by = "Question")
+
+n_responses1 <- n_responses1 %>%
+  mutate(total_response = nrow(nps1a),
+         pct_response = (nresponse/total_response)*100) %>%
+  select(Question, detail,
+         nresponse, total_response,
+         pct_response)
+
+n_responses1
+```
+
+```{r}
+nps1a %>%
+  select(c(5:13)) %>%
+  summarise(Q2.1._9 = mean(Q2.1._9, na.rm = TRUE),
+            Q2.1._1 = mean(Q2.1._1, na.rm = TRUE),
+            Q2.1._2 = mean(Q2.1._2, na.rm = TRUE),
+            Q2.1._3 = mean(Q2.1._3, na.rm = TRUE),
+            Q2.1._6 = mean(Q2.1._6, na.rm = TRUE),
+            Q2.1._5 = mean(Q2.1._5, na.rm = TRUE),
+            Q2.1._7 = mean(Q2.1._7, na.rm = TRUE),
+            Q2.1._8 = mean(Q2.1._8, na.rm = TRUE),
+            Q2.1._12 = mean(Q2.1._12, na.rm = TRUE))
+```
+

@@ -1,0 +1,522 @@
+---
+title: "Visualisations"
+author: "Ruimin Lin - 28757599"
+date: '2022-09-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Key objective:
+- Understand what is driving the movements in NPS monthly results
+- Focus areas to improve NPS
+- Show key trends and findings
+
+# Target Audience:
+- Head of Customer
+
+# Data Clean
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(stringr)
+library(lubridate)
+library(GGally)
+library(plotly)
+library(tidyr)
+library(paletteer)
+library(gridExtra)
+```
+
+```{r}
+nps <- read_csv("Dummy NPS Data for Interview wo Verbatim.csv")
+nps1 <- nps[-1, ]
+```
+
+```{r}
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("[^0-9.-]", "", .)))
+
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("1010", "10", .))) %>%
+  mutate(across(contains("Q2.1._"), ~gsub("00", "0", .)))
+
+nps1 <- nps1 %>%
+  mutate(Q1.1. = as.numeric(Q1.1.),
+         Q2.1._9 = as.numeric(Q2.1._9),
+         Q2.1._1 = as.numeric(Q2.1._1),
+         Q2.1._2 = as.numeric(Q2.1._2),
+         Q2.1._3 = as.numeric(Q2.1._3),
+         Q2.1._6 = as.numeric(Q2.1._6),
+         Q2.1._5 = as.numeric(Q2.1._5),
+         Q2.1._7 = as.numeric(Q2.1._7),
+         Q2.1._8 = as.numeric(Q2.1._8),
+         Q2.1._12 = as.numeric(Q2.1._12),
+         FARE_COST = as.numeric(FARE_COST),
+         DATE_OF_TRAVEL = dmy(DATE_OF_TRAVEL),
+         DEPARTURE_DELAY = as.numeric(DEPARTURE_DELAY))
+
+nps1 <- nps1 %>%
+  mutate(MONTH_OF_TRAVEL = month(DATE_OF_TRAVEL, label = TRUE, abbr = TRUE))
+```
+
+```{r}
+# deselect variables and remove missing value from country variable
+nps1a <- nps1 %>%
+  drop_na(-c(9:17)) %>%
+  select(-Q34_Version,
+         -Q34_Resolution,
+         -`Q34_Operating System`,
+         -Q34_Browser)
+
+```
+
+# NPS Overview
+
+```{r}
+nps_group <- nps1a %>%
+  select(Q1.1._NPS_GROUP) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = (n/sum(n))*100)
+
+nps_group
+```
+
+```{r}
+nps_daily <- nps1a %>%
+  select(ResponseId,
+         Q1.1._NPS_GROUP,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL) %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = round((n/sum(n)*100),2)) %>%
+  ungroup()
+#  pivot_wider(
+#    names_from = Q1.1._NPS_GROUP,
+#    values_from = pct
+#  ) %>%
+#  group_by(DATE_OF_TRAVEL,
+#           MONTH_OF_TRAVEL) %>%
+#  summarise(n = sum(n))
+
+nps_promoter <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Promoter")
+
+nps_detractor <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Detractor")
+
+nps_passive <- nps_daily %>%
+  filter(Q1.1._NPS_GROUP == "Passive")
+
+nps_daily1 <- nps_daily %>%
+  select(DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         n) %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(n = sum(n)) %>%
+  ungroup() %>%
+  mutate(nps_score = nps_promoter$pct - nps_detractor$pct)
+
+```
+
+```{r}
+nps_monthly <- nps_daily1 %>%
+  group_by(MONTH_OF_TRAVEL) %>%
+  summarise(n = sum(n),
+            nps_score = mean(nps_score))
+
+#nps_monthly %>%
+#  ggplot(aes(x = MONTH_OF_TRAVEL,
+#             y = nps_score)) +
+#  geom_col()
+```
+
+
+## nps overall
+
+
+
+
+```{r}
+nps_group <- nps1a %>%
+  select(Q1.1._NPS_GROUP) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = (n/sum(n))*100)
+
+p1 <- nps_group %>%
+  plot_ly(labels = ~Q1.1._NPS_GROUP,
+          values = ~n) %>%
+  add_pie(hole = 0.6) %>%
+  layout(title = "NPS Overall",
+         annotations = list(text = paste("NPS ", round(nps_group$pct[3] - nps_group$pct[1],2), "%", sep=""), 
+                            "showarrow"=F, font=list(size = 28, color = "black")))
+
+p1
+```
+
+## nps detail
+
+
+```{r}
+nps_mar <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "Mar") %>%
+  mutate(DAY_OF_MONTH = day(DATE_OF_TRAVEL))
+
+nps_apr <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "Apr") %>%
+  mutate(DAY_OF_MONTH = day(DATE_OF_TRAVEL))
+
+nps_may <- nps_daily1 %>%
+  filter(MONTH_OF_TRAVEL == "May") %>%
+  mutate(DAY_OF_MONTH = day(DATE_OF_TRAVEL))
+
+#ggplot() +
+#  geom_line(data = nps_mar,
+#            aes(x = DAY_OF_MONTH,
+#                y = nps_score,
+#                colour = "March")) +
+#  geom_line(data = nps_apr,
+#            aes(x = DAY_OF_MONTH,
+#            y = nps_score,
+#            colour = "April")) +
+#  geom_line(data = nps_may,
+#            aes(x = DAY_OF_MONTH,
+#            y = nps_score,
+#            colour = "May"))+
+#  theme_minimal()
+```
+
+
+```{r}
+dailyavg <- nps1a %>%
+  select(Q1.1.,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         DEPARTURE_DELAY,
+         FARE_COST)%>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(Q1.1. = mean(Q1.1.),
+            DEPARTURE_DELAY = mean(DEPARTURE_DELAY),
+            FARE_COST = mean(FARE_COST)) %>%
+  ungroup() 
+
+```
+
+# correlation
+
+```{r}
+csat_daily <- nps1a %>%
+  select(ResponseId,
+         c(5:13),
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         FARE_COST,
+         DEPARTURE_DELAY,
+         Q1.1._NPS_GROUP) 
+
+csat_daily <- csat_daily %>%
+  mutate(CSAT = rowMeans(select(nps1a,
+                       c(5:13)), na.rm = TRUE)) %>%
+  select(ResponseId,
+         DATE_OF_TRAVEL,
+         MONTH_OF_TRAVEL,
+         CSAT,FARE_COST,
+         DEPARTURE_DELAY,
+         Q1.1._NPS_GROUP)
+
+csat_daily1 <- csat_daily %>%
+  group_by(DATE_OF_TRAVEL,
+           MONTH_OF_TRAVEL) %>%
+  summarise(CSAT = mean(CSAT, na.rm = TRUE)) %>%
+  ungroup()
+```
+
+
+```{r}
+dailyavg1 <- 
+  merge(x = dailyavg, y = csat_daily1, by = "DATE_OF_TRAVEL") %>%
+  mutate(MONTH_OF_TRAVEL = MONTH_OF_TRAVEL.x,
+         nps_score = nps_daily1$nps_score) %>%
+  select(-MONTH_OF_TRAVEL.x,
+         -MONTH_OF_TRAVEL.y) 
+```  
+
+
+
+
+```{r}
+nps_daily2 <- nps_daily1 %>%
+  mutate(DAY_OF_MONTH = day(DATE_OF_TRAVEL))
+
+nps_daily2a <- merge(x = nps_daily2,
+                    y = dailyavg1,
+                    by = "DATE_OF_TRAVEL") %>%
+  select(-MONTH_OF_TRAVEL.y,
+         -nps_score.x) %>%
+  rename(MONTH_OF_TRAVEL = MONTH_OF_TRAVEL.x,
+         nps_score = nps_score.y)
+```
+
+
+```{r}
+p2 <- nps_daily2a %>%
+  plot_ly(
+    x = ~DAY_OF_MONTH,
+    line = list(width = 1)) %>%
+  add_trace(
+    y = ~nps_score,
+    text = ~paste("NPS Score: ",nps_score, "\n",
+                  "Day of Month:", DAY_OF_MONTH),
+    hoverinfo = 'text',
+    type = "scatter",
+    mode = "lines+markers",
+    name = "NPS Score",
+    line = list(color = "#ff7f0e", width = 3),
+    marker = list(color = "#ff7f0e", width = 5),
+    transforms = list(
+      list(type = "filter",
+           target = ~MONTH_OF_TRAVEL,
+           operation = "=",
+           value = unique(nps_daily2a$MONTH_OF_TRAVEL)[1])
+    )) %>%
+  add_trace(y = ~CSAT, 
+            name = "Customer Satisfaction", yaxis = "y2", 
+            type = "scatter",mode = "lines",
+            line = list(color = "#1f77b4", width = 2),
+            transforms = list(
+              list(type = "filter",
+                   target = ~MONTH_OF_TRAVEL,
+                   operation = "=",
+                   value = unique(nps_daily2a$MONTH_OF_TRAVEL)[1]))) %>%
+  layout(
+    title = "NPS & CSAT",
+    yaxis = list(title = "NPS"),
+    yaxis2 = list(title = "CSAT", overlaying = "y", side = "right"),
+    updatemenus = list(
+      list(
+        type = 'dropdown',
+        active = 0,
+        buttons = list(
+          list(method = "restyle",
+               args = list("transforms[0].value", unique(nps_daily2a$MONTH_OF_TRAVEL)[1]),
+               label = unique(nps_daily2a$MONTH_OF_TRAVEL)[1]),
+          list(method = "restyle",
+               args = list("transforms[0].value", unique(nps_daily2a$MONTH_OF_TRAVEL)[2]),
+               label = unique(nps_daily2a$MONTH_OF_TRAVEL)[2]),
+          list(method = "restyle",
+               args = list("transforms[0].value", unique(nps_daily2a$MONTH_OF_TRAVEL)[3]),
+               label = unique(nps_daily2a$MONTH_OF_TRAVEL)[3]))))
+  )
+```
+
+# correlation
+
+```{r}
+p1a <- ggpairs(dailyavg1[,c(3,4,5,7)]) +
+  theme_minimal() +
+  labs(title = "Relationship between each variables")
+```
+
+# survey responses
+
+```{r}
+n_responses <- 
+  tibble(Q2.1._9 = sum(!is.na(nps1a$Q2.1._9)),
+         Q2.1._1= sum(!is.na(nps1a$Q2.1._1)),
+         Q2.1._2 = sum(!is.na(nps1a$Q2.1._2)),
+         Q2.1._3 = sum(!is.na(nps1a$Q2.1._3)),
+         Q2.1._6 = sum(!is.na(nps1a$Q2.1._6)),
+         Q2.1._5 = sum(!is.na(nps1a$Q2.1._5)),
+         Q2.1._7 = sum(!is.na(nps1a$Q2.1._7)),
+         Q2.1._8 = sum(!is.na(nps1a$Q2.1._8)),
+         Q2.1._12 = sum(!is.na(nps1a$Q2.1._12)))
+
+
+n_responses <- n_responses %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "nresponse")
+
+
+names <- nps[1,9:17]
+
+names <- names %>%
+ mutate(Q2.1._9 = str_extract(Q2.1._9, "\\ - (.*)"),
+        Q2.1._1 = str_extract(Q2.1._1, "\\ - (.*)"),
+        Q2.1._2 = str_extract(Q2.1._2, "\\ - (.*)"),
+        Q2.1._3 = str_extract(Q2.1._3, "\\ - (.*)"),
+        Q2.1._6 = str_extract(Q2.1._6, "\\ - (.*)"),
+        Q2.1._5 = str_extract(Q2.1._5, "\\ - (.*)"),
+        Q2.1._7 = str_extract(Q2.1._7, "\\ - (.*)"),
+        Q2.1._8 = str_extract(Q2.1._8, "\\ - (.*)"),
+        Q2.1._12 = str_extract(Q2.1._12, "\\ - (.*)")) %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "detail")
+```
+
+```{r}
+n_responses1 <- 
+  merge(x = n_responses, y = names, by = "Question")
+
+n_responses1 <- n_responses1 %>%
+  mutate(total_response = nrow(nps1a),
+         pct_response = (nresponse/total_response)*100) %>%
+  select(Question, detail,
+         nresponse, total_response,
+         pct_response)
+```
+
+```{r}
+surveyq <- nps1a %>%
+  select(c(5:13)) %>%
+  summarise(Q2.1._9 = mean(Q2.1._9, na.rm = TRUE),
+            Q2.1._1 = mean(Q2.1._1, na.rm = TRUE),
+            Q2.1._2 = mean(Q2.1._2, na.rm = TRUE),
+            Q2.1._3 = mean(Q2.1._3, na.rm = TRUE),
+            Q2.1._6 = mean(Q2.1._6, na.rm = TRUE),
+            Q2.1._5 = mean(Q2.1._5, na.rm = TRUE),
+            Q2.1._7 = mean(Q2.1._7, na.rm = TRUE),
+            Q2.1._8 = mean(Q2.1._8, na.rm = TRUE),
+            Q2.1._12 = mean(Q2.1._12, na.rm = TRUE)) %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "avg_sat")
+
+
+n_responses1 <- 
+  merge(x = n_responses1,
+        y = surveyq,
+        by = "Question")
+```
+
+
+
+
+```{r}
+avg_sat <- nps1a %>%
+  select(ResponseId,
+         c(5:13)) %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "Question",
+               values_to = "sat_score")
+
+avg_sat <- merge(x = avg_sat,
+                 y = names,
+                 by = "Question")
+
+calc_sat <- avg_sat %>%
+  drop_na() %>%
+  mutate(sat_score = as.character(sat_score)) %>%
+  count(Question, sat_score) %>%
+  group_by(Question) %>%
+  mutate(pct = ((n/sum(n, na.rm = TRUE))*100))
+  
+
+```
+
+
+```{r}
+calc_sat <- 
+  merge(x = calc_sat,
+        y = names,
+        by = "Question")
+
+calc_sat <- calc_sat %>%
+  group_by(sat_score) %>%
+  mutate(Question = fct_reorder(Question, 
+                                pct)) %>%
+  ungroup()
+
+sorted_labels <- paste(unique(sort(as.integer(calc_sat$sat_score))))
+
+calc_sat$sat_score <- factor(calc_sat$sat_score, levels = sorted_labels)
+```
+
+
+```{r}
+calc_sat <- 
+  merge(x = calc_sat,
+        y = n_responses1,
+        by = "Question")
+```
+
+
+```{r}
+calc_sat <- calc_sat %>%
+  select(-detail.y) %>%
+  rename(detail = detail.x)
+```
+
+
+```{r}
+colourP = c("#FF5500FF","#FF9932","#FFA000FF", 
+            "#FFD54FFF","#FFE082FF","#FFECB3FF", 
+            "#FFFFBFFF", "#65BFFFFF","#4CA5FFFF", 
+            "#3288FFFF", "#1965FFFF")
+
+p3 <- calc_sat %>%
+  ggplot(aes(x = detail, 
+             y = round(pct,2),
+             label = scales::percent(pct))) +
+  geom_col(aes(fill = sat_score, 
+               group = sat_score),
+           position = position_fill(reverse = TRUE),
+           colour = "white",
+           width = 0.7) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(labels = c(" - Your arrival experience  from landing to leaving the airport" = 
+                                " - Your arrival experience from\nlanding to leaving the airport",
+                              " - Any purchases you made on-board " =
+                                " - Any purchases you made\non-board ")) +
+  theme_minimal() +
+  scale_fill_manual(values = colourP) +
+  theme(legend.position = "top",
+        legend.direction = "horizontal",
+        panel.grid.major.y = element_blank(),
+        plot.title = element_text(vjust = 3),
+        axis.title.x =element_blank()) +
+  ylab("Percentage") +
+  labs(title = "How would you rate your satisfaction of each of the following...") +
+  coord_flip() +
+  guides(fill=guide_legend(nrow=2,byrow=TRUE,
+                           title="0 = Completely Dissatisfied\n10 = Completely Satisfied"))
+
+```
+
+
+```{r}
+n_responses1 <- n_responses1 %>%
+  mutate(pct_total = rep(100))
+                         
+p4 <- n_responses1 %>%
+  ggplot() +
+  geom_col(aes(x = detail,
+               y = pct_total,
+               label = scales::percent(pct_total)),
+           fill = "white",
+           colour = "grey") +
+  geom_col(aes(x = detail, 
+               y = round(pct_response,2)),
+           fill = "orange") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  scale_x_discrete(labels = c(" - Your arrival experience  from landing to leaving the airport" = 
+                                " - Your arrival experience from\nlanding to leaving the airport",
+                              " - Any purchases you made on-board " =
+                                " - Any purchases you made\non-board ")) +
+  theme_minimal() +
+  theme(legend.position="none",
+        axis.title.y = element_blank()) +
+  ylab("Percentage") +
+  labs(title = "% of Responses of Each Question") +
+  coord_flip()
+```
+

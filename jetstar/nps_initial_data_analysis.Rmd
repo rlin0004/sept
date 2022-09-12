@@ -1,0 +1,210 @@
+---
+title: "JETSTAR"
+author: "Ruimin Lin - 28757599"
+date: '2022-09-09'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+nps <- read_csv("Dummy NPS Data for Interview wo Verbatim.csv")
+```
+
+
+```{r}
+nps1 <- nps[-1, ]
+summary(nps1)
+
+glimpse(nps1)
+```
+
+```{r}
+unique(nps1$Q2.1._1)
+unique(nps1$Q2.1._2)
+unique(nps1$Q2.1._3)
+# 10${e://Field/10Scale} and 0${e://Field/0Scale} should be replaced with 10 & 0
+```
+
+
+```{r}
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("[^0-9.-]", "", .)))
+
+nps1 <- nps1 %>%
+  mutate(across(contains("Q2.1._"), ~gsub("1010", "10", .))) %>%
+  mutate(across(contains("Q2.1._"), ~gsub("00", "0", .)))
+
+unique(nps1$Q2.1._1)
+```
+
+
+```{r}
+nps1 %>%
+  vis_miss(warn_large_data = FALSE)
+```
+
+```{r}
+glimpse(nps1)
+
+nps1 <- nps1 %>%
+  mutate(Q1.1. = as.numeric(Q1.1.),
+         Q2.1._9 = as.numeric(Q2.1._9),
+         Q2.1._1 = as.numeric(Q2.1._1),
+         Q2.1._2 = as.numeric(Q2.1._2),
+         Q2.1._3 = as.numeric(Q2.1._3),
+         Q2.1._6 = as.numeric(Q2.1._6),
+         Q2.1._5 = as.numeric(Q2.1._5),
+         Q2.1._7 = as.numeric(Q2.1._7),
+         Q2.1._8 = as.numeric(Q2.1._8),
+         Q2.1._12 = as.numeric(Q2.1._12),
+         FARE_COST = as.numeric(FARE_COST),
+         DATE_OF_TRAVEL = dmy(DATE_OF_TRAVEL),
+         DEPARTURE_DELAY = as.numeric(DEPARTURE_DELAY))
+
+nps1 <- nps1 %>%
+  mutate(MONTH_OF_TRAVEL = month(DATE_OF_TRAVEL, label = TRUE, abbr = TRUE))
+
+glimpse(nps1)
+
+#Q1.1. NPS questions, how likely you would recommend jetstar to your friend
+#Q2 satisfaction question, how would you rate your satisfaction
+```
+
+```{r}
+nps1 %>%
+  ggplot(aes(x = Q1.1._NPS_GROUP)) +
+  geom_bar()
+
+nps1 %>%
+  ggplot(aes(x = CHECK_IN_METHOD)) +
+  geom_bar()
+
+nps1 %>%
+  ggplot(aes(x = DELAYED)) +
+  geom_bar()
+
+nps1 %>%
+  ggplot(aes(x = MONTH_OF_TRAVEL)) +
+  geom_bar()
+
+nps1 %>%
+  ggplot(aes(x = Reporting_Flag)) +
+  geom_bar()
+
+nps1 %>%
+  ggplot(aes(x = `Delay Group`)) +
+  geom_bar()
+
+```
+
+```{r}
+nps1a <- nps1 %>%
+  filter(Finished == "TRUE")
+```
+
+
+
+```{r}
+# dataset for customer group A: purchases both managing booking & onboard service
+nps_a <- nps1a %>%
+  drop_na(Q2.1._2) %>%
+  drop_na(Q2.1._8)
+
+# nps_a <- nps_a %>%
+#  drop_na(Q2.1._1)
+
+gg_miss_var(nps_a)
+```
+
+
+```{r}
+# dataset for customer group B: purchases managing booking service only
+nps_b <- nps1a %>%
+  drop_na(Q2.1._2) %>%
+#  drop_na(Q2.1._1) %>%
+  filter(is.na(Q2.1._8))
+
+gg_miss_var(nps_b)
+```
+
+
+```{r}
+# dataset for customer group C: purchases onboard service only
+nps_c <- nps1a %>%
+  drop_na(Q2.1._8) %>%
+#  drop_na(Q2.1._1) %>%
+  filter(is.na(Q2.1._2))
+
+gg_miss_var(nps_c)
+```
+
+
+```{r}
+# dataset for customer group D - did not purchase any additional service
+nps_d <- nps1a %>%
+  filter(is.na(Q2.1._2)) %>%
+  filter(is.na(Q2.1._8))
+
+gg_miss_var(nps_d)
+```
+
+```{r}
+nps_clean <- nps1a %>%
+  drop_na()
+
+gg_miss_var(nps_clean)
+```
+
+```{r}
+# percentage of nps groups
+nps_group <- nps_clean %>%
+  select(Q1.1._NPS_GROUP) %>%
+  count(Q1.1._NPS_GROUP) %>%
+  mutate(pct = round(((n/sum(n))*100),2))
+
+nps_group
+
+```
+
+```{r}
+# average csat score
+csat <- nps_clean %>%
+  select(ResponseId,
+         c(9:17), 
+         DATE_OF_TRAVEL) %>%
+  pivot_longer(cols = starts_with("Q2"),
+               names_to = "question",
+               values_to = "score") %>%
+  group_by(ResponseId, DATE_OF_TRAVEL) %>%
+  summarise(avg_sat = round(mean(score),1)) %>%
+  ungroup() %>%
+  group_by(DATE_OF_TRAVEL) %>%
+  summarise(avg_sat = round(mean(avg_sat),1)) %>%
+  ggplot(aes(x = DATE_OF_TRAVEL,
+             y = avg_sat)) +
+  geom_line()
+```
+
+
+```{r}
+nps_group %>%
+  filter(MONTH_OF_TRAVEL == "Mar") %>%
+  ggplot(aes(x = Q1.1._NPS_GROUP,
+             y = pct)) +
+  geom_point()
+
+```
+
+
+
+
